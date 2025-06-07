@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Via Flight Travel Planner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ▣ 좌측 사이드바 --------------------------------------------------- -->
+  <div id="sidebar">
+    <!-- 1. 출발지 입력 -->
+    <div id="start-location-form">
+      <h3>출발지 입력</h3>
+      <input id="start-location" type="text" placeholder="출발지 입력">
+      <div style="display: flex' gap: 5px; margin-top: 5px;">
+        <button id="confirm-start-button">출발지 확인</button>
+        <button id="gps-location-button">📍 현재 위치 사용</button>
+      </div> 
+    </div><hr>
+    
+    <!-- 1.1 환승지 도착 시간 -->
+    <div id="arrival-time-form">
+      <h3>환승지 도착 시간</h3>
+      <input id="arrival-time" type="datetime-local">
+      
+      <!-- 시간대 선택 추가 -->
+      <div id="timezone-selector">
+        <select id="timezone-select">
+          <option value="local">현지 시간</option>
+          <!--<option value="-12">UTC-12</option>
+          <option value="-11">UTC-11</option>
+          <option value="-10">UTC-10 (하와이)</option>
+          <option value="-9">UTC-9 (알래스카)</option>
+          <option value="-8">UTC-8 (태평양 시간)</option>
+          <option value="-7">UTC-7 (산악 시간)</option>
+          <option value="-6">UTC-6 (중부 시간)</option>
+          <option value="-5">UTC-5 (동부 시간)</option>
+          <option value="-4">UTC-4</option>
+          <option value="-3">UTC-3</option>
+          <option value="-2">UTC-2</option>
+          <option value="-1">UTC-1</option>
+          <option value="0">UTC+0 (런던)</option>
+          <option value="1">UTC+1 (파리, 로마)</option>
+          <option value="2">UTC+2 (카이로)</option>
+          <option value="3">UTC+3 (모스크바)</option>
+          <option value="4">UTC+4</option>
+          <option value="5">UTC+5</option>
+          <option value="5.5">UTC+5:30 (인도)</option>
+          <option value="6">UTC+6</option> -->
+          <option value="7">UTC+7 (방콕)</option>
+          <option value="8">UTC+8 (베이징, 싱가포르)</option>
+          <option value="9">UTC+9 (서울, 도쿄)</option>
+          <option value="10">UTC+10 (시드니)</option>
+          <!--<option value="11">UTC+11</option>
+          <option value="12">UTC+12 (뉴질랜드)</option> -->
+        </select>
+      </div>
+    </div><hr>
+    
+    <!-- 1.2 환승 시간 -->
+    <div id="layover-time-form">
+      <h3>환승 시간 (분 단위)</h3>
+      <input id="layover-time" type="number" placeholder="환승 시간 (분)" min="30" max="1440">
+      <small>최소 30분, 최대 24시간(1440분)</small>
+    </div><hr>
+
+    <!-- 서비스 이용하는 시간 선택하는 토글 -->
+    <!-- 시간 모드 토글 -->
+     <div id="time-mode-toggle" class="toggle-container">
+      <label>운영 시간 표시 기준:</label>
+      <div class="toggle-buttons">
+        <button id="current-time-btn" class="toggle-btn active">현재 시간</button>
+        <button id="arrival-time-btn" class="toggle-btn">환승 도착 시간</button>
+      </div>
+      <small>* '환승 도착 시간' 모드는 환승지 도착 시간을 입력해야 활성화됩니다.</small>
+    </div>
+
+    <!-- 2. 선호 카테고리 -->
+    <div id="category-section">
+      <h3>선호 카테고리</h3>
+      <button class="category-button" data-type="tourist_attraction">관광명소</button>
+      <button class="category-button" data-type="restaurant">식당</button>
+      <button class="category-button" data-type="cafe">카페</button>
+      <button class="category-button" data-type="lodging">숙박</button>
+      <button class="category-button" data-type="shopping_mall">쇼핑몰</button>
+      <button class="category-button" data-type="airport">공항</button>
+      <button class="category-button" data-type="park">공원</button>
+      <button class="category-button" data-type="museum">박물관</button>
+    </div><hr>
+
+    <!-- 3. 목적지 검색 -->
+    <div id="destination-search-section">
+      <h3>목적지 검색</h3>
+      <input id="destination-search" type="text" placeholder="목적지 검색">
+      <div id="destination-search-results"></div>
+    </div><hr>
+
+    <!-- 4. 일정 편집/생성 -->
+    <div id="itinerary-section">
+      <h3>추가된 일정 <small>(드래그로 순서 변경)</small></h3>
+      <div id="itinerary-list"></div>
+      <button id="generate-route-button">최적 일정 생성하기</button>
+      <button id="reset-button">전체 초기화</button>
+    </div><hr>
+
+    <!-- 5. 생성된 경로 상세 -->
+    <div id="generated-itinerary">
+      <h3>생성된 일정 상세정보</h3>
+      <div id="route-details"></div>
+    </div>
+  </div>
+
+  <!-- ▣ 우측 지도 --> 
+  <div id="map"></div>
+
+  <!-- ▣ 모달(POI 상세 페이지) -->
+  <div id="destination-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ▣ 로딩 인디케이터 추가 -->
+  <div id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">경로 계산 중...</div>
+  </div>
+
+  <!-- ▣ 스크립트 로드 -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <script src="script.js"></script>
+  <!-- Google Maps API 키는 환경 변수나 백엔드를 통해 안전하게 관리하는 것이 좋습니다 -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACzQPvcltn0FlmsrPp1yT3oTgQjVftHf0&libraries=places&callback=initMap">
+  </script>
+  <!-- ▣ 여행 네비게이션 UI -->
+  <!-- 여행 시작 버튼 (플로팅) -->
+  <button id="start-journey-button" class="floating-start-btn" style="display: none;">
+    여행 시작
+  </button>
+  <!-- 상태 알림 영역 (플로팅) -->
+  <div id="status-indicator" class="status-floating" style="display: none;">
+    <div class="status-header">
+      <span class="status-icon">🟢</span>
+      <span class="status-text">여행 준비 중</span>
+      <button class="status-toggle">📌</button>
+    </div>
+    <div class="status-details">
+      <div class="status-info">
+        <span class="next-destination">다음: 목적지 로딩 중...</span>
+        <span class="time-remaining">남은 시간: 계산 중...</span>
+      </div>
+    </div>
+  </div>
+  <!-- 여행 중 컨트롤 버튼들 -->
+  <div id="journey-controls" class="journey-controls" style="display: none;">
+    <button id="pause-journey-btn" class="control-btn">⏸️ 일시정지</button>
+    <button id="resume-journey-btn" class="control-btn" style="display: none;">▶️ 여행 재개</button>
+    <button id="stop-journey-btn" class="control-btn">⏹️ 여행 종료</button>
+  </div>
+</body>
+</html>
