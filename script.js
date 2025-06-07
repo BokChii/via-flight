@@ -16,6 +16,11 @@ let userLocationMarker = null;         // 사용자 위치 마커
 let isTrackingActive = false;          // 추적 활성화 상태
 let visitedDestinations = [];          // 방문 완료한 목적지들
 let lastLocationUpdate = null;         // 마지막 위치 업데이트 시간
+// 06.07 네비게이션 지도 관련 변수 (새로 추가)
+let isMapFollowingUser = false;      // 사용자 따라가기 모드
+let mapDragTimeout = null;           // 드래그 감지 타이머
+let lastUserHeading = 0;             // 마지막 사용자 방향
+let isMapRotationEnabled = false;    // 지도 회전 활성화 여부
 
 // 추적 설정 (구글맵 네비게이션과 유사하게)
 const TRACKING_OPTIONS = {
@@ -1429,9 +1434,7 @@ function startJourney() {
   journeyStartTime = new Date();
   currentDestinationIndex = 0;
   
-  // ⚠️ 중요: 최적화된 경로 순서를 가져와야 함
-  // generateOptimalRoute에서 생성된 순서대로 journeyItinerary 설정 필요
-  // 임시로 기존 순서 사용 (나중에 최적화된 순서로 업데이트 예정)
+  // 중요: 최적화된 경로 순서를 가져와야 함
   //journeyItinerary = [...itineraryDestinations]; // 복사본 생성
   // 최적화된 순서가 있으면 사용, 없으면 기존 순서 사용
   journeyItinerary = window.optimizedJourneyOrder || [...itineraryDestinations];
@@ -1450,7 +1453,15 @@ function startJourney() {
   );
   
   // GPS 추적 시작
-  startGpsTracking();
+  const trackingStarted = startGpsTracking();
+  if (!trackingStarted) {
+    alert("GPS 추적을 시작할 수 없습니다. 위치 권한을 확인해주세요.");
+    isJourneyActive = false;
+    return;
+  }
+
+  // 네비게이션 모드 활성화 (새로 추가)
+  enableNavigationMode();
   
   showTemporaryNotification("여행이 시작되었습니다! 안전한 여행 되세요.");
   console.log("여행 시작:", journeyStartTime);
@@ -1522,6 +1533,9 @@ function stopJourney() {
   
   // GPS 추적 중단
   stopGpsTracking();
+
+  // 06.07 네비게이션 모드 비활성화 (새로 추가)
+  disableNavigationMode();
   
   // UI 리셋
   document.getElementById("status-indicator").style.display = "none";
@@ -1673,11 +1687,18 @@ function isSignificantMovement(oldPos, newPos) {
 /* ---------- 현재 위치 표시 (구글맵 네비게이션 스타일) ---------- */
 
 // 지도에 현재 위치 표시 (구글맵 네비게이션과 유사한 스타일)
+// 06.07 네비게이션 기능 추가 (고도화)
+// 지도에 현재 위치 표시 (네비게이션 기능 추가)
 function updateUserLocationOnMap(position) {
   const userLocation = new google.maps.LatLng(position.lat, position.lng);
   
-  // 기존 사용자 위치 마커 제거
+  // 이전 위치 저장 (방향 계산용)
+  let prevPosition = null;
   if (userLocationMarker) {
+    prevPosition = {
+      lat: userLocationMarker.getPosition().lat(),
+      lng: userLocationMarker.getPosition().lng()
+    };
     userLocationMarker.setMap(null);
   }
   
@@ -1686,7 +1707,6 @@ function updateUserLocationOnMap(position) {
     position: userLocation,
     map: map,
     icon: {
-      // 구글맵 네비게이션과 유사한 파란 점 스타일
       path: google.maps.SymbolPath.CIRCLE,
       scale: 8,
       fillColor: '#4285F4',
@@ -1700,7 +1720,7 @@ function updateUserLocationOnMap(position) {
     optimized: false
   });
 
-  // 정확도 원 추가 (구글맵처럼)
+  // 정확도 원 업데이트
   if (window.accuracyCircle) {
     window.accuracyCircle.setMap(null);
   }
@@ -1716,6 +1736,20 @@ function updateUserLocationOnMap(position) {
     strokeWeight: 1,
     zIndex: 999
   });
+
+  // 네비게이션 모드일 때 지도 따라가기
+  if (isMapFollowingUser) {
+    map.panTo(userLocation);
+    
+    // 사용자 이동 방향 계산 및 지도 회전
+    if (prevPosition) {
+      const heading = calculateUserHeading(prevPosition, position);
+      if (heading !== null) {
+        lastUserHeading = heading;
+        smoothMapRotation(heading);
+      }
+    }
+  }
 
   // 첫 번째 위치 업데이트 시 지도 중심 이동
   if (!lastLocationUpdate) {
@@ -1864,6 +1898,135 @@ function calculateRemainingTime() {
   const remaining = Math.max(0, Math.floor((endTime - now) / 1000)); // 초 단위
   return formatDuration(remaining);
 }
+
+// 06.07 네이베이션 기능 고도화
+
+/* ---------- 네비게이션 지도 동작 함수들 ---------- */
+
+// 네비게이션 모드 활성화
+function enableNavigationMode() {
+  isMapFollowingUser = true;
+  isMapRotationEnabled = true;
+  
+  // 복귀 버튼 표시
+  const recenterBtn = document.getElementById("recenter-map-btn");
+  if (recenterBtn) {
+    recenterBtn.style.display = "block";
+  }
+  
+  // 지도 드래그 이벤트 리스너 추가
+  map.addListener('dragstart', onMapDragStart);
+  map.addListener('dragend', onMapDragEnd);
+  
+  console.log("🧭 네비게이션 모드 활성화");
+}
+
+// 네비게이션 모드 비활성화
+function disableNavigationMode() {
+  isMapFollowingUser = false;
+  isMapRotationEnabled = false;
+  
+  // 복귀 버튼 숨기기
+  const recenterBtn = document.getElementById("recenter-map-btn");
+  if (recenterBtn) {
+    recenterBtn.style.display = "none";
+  }
+  
+  // 지도를 원래대로 (북쪽 위)
+  map.setHeading(0);
+  
+  console.log("🧭 네비게이션 모드 비활성화");
+}
+
+// 지도 드래그 시작 시
+function onMapDragStart() {
+  if (isMapFollowingUser) {
+    console.log("🖱️ 사용자가 지도를 드래그 시작 - 자동 추적 일시정지");
+    isMapFollowingUser = false;
+    
+    // 복귀 버튼 강조 표시
+    const recenterBtn = document.getElementById("recenter-map-btn");
+    if (recenterBtn) {
+      recenterBtn.style.backgroundColor = "#ff9800";
+      recenterBtn.style.color = "white";
+      recenterBtn.style.animation = "pulse 1s infinite";
+    }
+  }
+}
+
+// 지도 드래그 종료 시
+function onMapDragEnd() {
+  // 3초 후에 자동으로 복귀 버튼 일반 상태로
+  if (mapDragTimeout) clearTimeout(mapDragTimeout);
+  mapDragTimeout = setTimeout(() => {
+    const recenterBtn = document.getElementById("recenter-map-btn");
+    if (recenterBtn && !isMapFollowingUser) {
+      recenterBtn.style.backgroundColor = "";
+      recenterBtn.style.color = "";
+      recenterBtn.style.animation = "";
+    }
+  }, 3000);
+}
+
+// 내 위치로 복귀
+function recenterMapToUser() {
+  if (currentPosition) {
+    const userLocation = new google.maps.LatLng(currentPosition.lat, currentPosition.lng);
+    
+    // 지도 중심 이동
+    map.panTo(userLocation);
+    
+    // 적절한 줌 레벨 설정
+    if (map.getZoom() < 16) {
+      map.setZoom(16);
+    }
+    
+    // 사용자 따라가기 모드 재활성화
+    isMapFollowingUser = true;
+    
+    // 복귀 버튼 일반 상태로
+    const recenterBtn = document.getElementById("recenter-map-btn");
+    if (recenterBtn) {
+      recenterBtn.style.backgroundColor = "";
+      recenterBtn.style.color = "";
+      recenterBtn.style.animation = "";
+    }
+    
+    console.log("🎯 지도가 사용자 위치로 복귀");
+    showTemporaryNotification("내 위치로 이동했습니다.");
+  }
+}
+
+// 사용자 방향 계산 (이전 위치와 현재 위치 비교)
+function calculateUserHeading(prevPos, currentPos) {
+  if (!prevPos || !currentPos) return null;
+  
+  const lat1 = prevPos.lat * Math.PI / 180;
+  const lat2 = currentPos.lat * Math.PI / 180;
+  const deltaLng = (currentPos.lng - prevPos.lng) * Math.PI / 180;
+  
+  const y = Math.sin(deltaLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+  
+  let heading = Math.atan2(y, x) * 180 / Math.PI;
+  return (heading + 360) % 360; // 0-360도 범위로 변환
+}
+
+// 부드러운 지도 회전
+function smoothMapRotation(targetHeading) {
+  if (!isMapRotationEnabled || !isMapFollowingUser) return;
+  
+  const currentHeading = map.getHeading() || 0;
+  const angleDiff = ((targetHeading - currentHeading + 540) % 360) - 180;
+  
+  // 각도 차이가 15도 이상일 때만 회전 (노이즈 방지)
+  if (Math.abs(angleDiff) > 15) {
+    const newHeading = (currentHeading + angleDiff * 0.3) % 360;
+    map.setHeading(newHeading);
+    console.log(`🧭 지도 회전: ${newHeading.toFixed(1)}도`);
+  }
+}
+
 
 /* ---------- 지도 초기화 ---------- */
 function initMap(){
@@ -2023,6 +2186,12 @@ if (stopJourneyBtn) {
 
 if (statusToggle) {
   statusToggle.addEventListener("click", toggleStatusIndicatorMode);
+}
+
+// 06.07 복귀 버튼 이벤트 리스너 (새로 추가)
+const recenterBtn = document.getElementById("recenter-map-btn");
+if (recenterBtn) {
+  recenterBtn.addEventListener("click", recenterMapToUser);
 }
   
   // 로딩 오버레이 초기 숨김
