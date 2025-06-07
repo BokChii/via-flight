@@ -612,7 +612,6 @@ input[type="number"] {
 
 /* 향후 화면 크기에 따라 수정 가능한 부분! */
 
-
 /* 컨트롤 버튼 개별 스타일 */
 #pause-journey-btn {
   background: linear-gradient(45deg, #ff9800, #f57c00);
@@ -656,4 +655,48 @@ input[type="number"] {
   content: "🚀";
   margin-right: 8px;
   font-size: 20px;
+}
+
+/* 06.07 내 위치로 복귀 및 지도 자동 이동 기능, 네비 기능 고도화*/
+/* 지도 복귀 버튼 스타일 */
+.recenter-btn {
+  position: fixed;
+  bottom: 120px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid #2196f3;
+  border-radius: 50px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #2196f3;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  z-index: 1300;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.recenter-btn:hover {
+  background: #2196f3;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+}
+
+.recenter-btn.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 모바일 대응 */
+@media (max-width: 768px) {
+  .recenter-btn {
+    bottom: 100px;
+    right: 15px;
+    padding: 10px 16px;
+    font-size: 12px;
+    min-width: 80px;
+  }
 }
