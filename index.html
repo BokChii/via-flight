@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <title>Via Flight Travel Planner</title>
     <link rel="stylesheet" href="style.css">
-  </head>
 </head>
 <body>
   <!-- ▣ 좌측 사이드바 --------------------------------------------------- -->
@@ -16,14 +14,29 @@
     <div id="start-location-form">
       <h3>출발지 입력</h3>
       <input id="start-location" type="text" placeholder="출발지 입력">
-      <div style="display: flex' gap: 5px; margin-top: 5px;">
+      <div style="display: flex; gap: 5px; margin-top: 5px;">
         <button id="confirm-start-button">출발지 확인</button>
         <button id="gps-location-button">📍 현재 위치 사용</button>
-      </div> 
+      </div>
+      <small style="color: #666; font-size: 11px;">
+        💡 정확한 위치 측정을 위해 실외에서 사용하세요
+      </small>
     </div><hr>
     
-    <!-- 1.1 환승지 도착 시간 -->
-    <div id="arrival-time-form">
+    <!-- 2. 시간 모드 선택, 서비스 이용하는 시간 선택하는 토글 -->
+    <!-- 시간 모드 토글 -->
+    <div id="time-mode-toggle" class="toggle-container">
+      <label>여행 시간 기준 선택:</label>
+      <div class="toggle-buttons">
+        <button id="current-time-btn" class="toggle-btn active">현재 시간</button>
+        <button id="arrival-time-btn" class="toggle-btn">환승 도착 시간</button>
+      </div>
+      <small>* 현재 시간: 지금 즉시 여행 시작 | 환승 도착 시간: 미래 일정 계획</small>
+      <small>* '환승 도착 시간' 모드는 환승지 도착 시간을 입력해야 활성화됩니다.</small>
+    </div>
+
+    <!-- 1.1 환승지 도착 시간 (조건부 표시)-->
+    <div id="arrival-time-form" style="display: none">
       <h3>환승지 도착 시간</h3>
       <input id="arrival-time" type="datetime-local">
       
@@ -54,7 +67,7 @@
           <option value="7">UTC+7 (방콕)</option>
           <option value="8">UTC+8 (베이징, 싱가포르)</option>
           <option value="9">UTC+9 (서울, 도쿄)</option>
-          <option value="10">UTC+10 (시드니)</option>
+          <!--<option value="10">UTC+10 (시드니)</option> -->
           <!--<option value="11">UTC+11</option>
           <option value="12">UTC+12 (뉴질랜드)</option> -->
         </select>
@@ -65,19 +78,8 @@
     <div id="layover-time-form">
       <h3>환승 시간 (분 단위)</h3>
       <input id="layover-time" type="number" placeholder="환승 시간 (분)" min="30" max="1440">
-      <small>최소 30분, 최대 24시간(1440분)</small>
+      <small>얼마나 오래 여행하실 예정인가요? (최소 30분, 최대 24시간(1440분))</small>
     </div><hr>
-
-    <!-- 서비스 이용하는 시간 선택하는 토글 -->
-    <!-- 시간 모드 토글 -->
-     <div id="time-mode-toggle" class="toggle-container">
-      <label>운영 시간 표시 기준:</label>
-      <div class="toggle-buttons">
-        <button id="current-time-btn" class="toggle-btn active">현재 시간</button>
-        <button id="arrival-time-btn" class="toggle-btn">환승 도착 시간</button>
-      </div>
-      <small>* '환승 도착 시간' 모드는 환승지 도착 시간을 입력해야 활성화됩니다.</small>
-    </div>
 
     <!-- 2. 선호 카테고리 -->
     <div id="category-section">
@@ -95,7 +97,10 @@
     <!-- 3. 목적지 검색 -->
     <div id="destination-search-section">
       <h3>목적지 검색</h3>
-      <input id="destination-search" type="text" placeholder="목적지 검색">
+      <div class="search-input-container">
+        <input id="destination-search" type="text" placeholder="목적지 검색">
+        <button id="clear-search-btn" class="clear-btn" title="검색어 지우기">✕</button>
+      </div>
       <div id="destination-search-results"></div>
     </div><hr>
 
@@ -154,6 +159,8 @@
       <div class="status-info">
         <span class="next-destination">다음: 목적지 로딩 중...</span>
         <span class="time-remaining">남은 시간: 계산 중...</span>
+        <!-- 상세 정보 영역 추가 -->
+        <span class="detailed-info" style="display: none;"></span>
       </div>
     </div>
   </div>
