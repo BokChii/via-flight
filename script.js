@@ -276,7 +276,7 @@ function isOpenNow(opening_hours, useSpecificTime = null) {
 
       // 06.05 periods로 확인했을 때 운영 중이 아니면 바로 false 반환 (특정 시간 모드일 때)
       if (shouldIgnoreOpneNow) {
-        console.log('${timeMode} 기준 운영 종료 (periods 확인 완료)');
+        console.log(`${timeMode} 기준 운영 종료 (periods 확인 완료)`);
         return false;
       }
     } catch (e) {
@@ -390,7 +390,7 @@ function isOpenNow(opening_hours, useSpecificTime = null) {
   }
   //06.05 특정 시간 모드에서는 여기까지 왔으면 운영 종료
   if (shouldIgnoreOpneNow) {
-    console.log('${timeMode} 기준 운영 종료로 판단');
+    console.log(`${timeMode} 기준 운영 종료로 판단`);
     return false
   }
 
@@ -932,11 +932,24 @@ async function generateOptimalRoute() {
     alert("일정에 목적지를 추가해주세요.");
     return;
   }
-  // 사용자 입력 읽기
-  const arrivalTime = new Date(arrivalInput.value);
-  const layoverTime = parseInt(layoverInput.value);
-  if (!arrivalInput.value || isNaN(layoverTime)) {
-    alert("환승지 도착 시간과 환승 시간을 모두 입력해주세요.");
+
+  // 06.07 시간 모드별 유효성 검사 (수정된 부분)
+  if (!validateCurrentTimeMode()) {
+    return;
+  }
+  
+  // 사용자 입력 읽기 (수정된 부분)
+  const arrivalTime = getCurrentTimeModeArrivalTime();
+  const layoverTime = parseInt(document.getElementById("layover-time").value);
+  
+  if (isNaN(layoverTime)) {
+    alert("여행 시간을 입력해주세요.");
+    return;
+  }
+  
+  // 환승 모드에서만 도착 시간 체크
+  if (!isUsingCurrentTime && !document.getElementById("arrival-time").value) {
+    alert("환승지 도착 시간을 입력해주세요.");
     return;
   }
   
@@ -1301,29 +1314,7 @@ function searchByCategory(loc, type){
 
 /* ---------- 시간 모드 관련 함수들 ---------- */
 
-// 시간 모드 설정 함수
-function setTimeMode(useCurrentTime) {
-  isUsingCurrentTime = useCurrentTime;
-  
-  // 버튼 상태 업데이트
-  const currentTimeBtn = document.getElementById("current-time-btn");
-  const arrivalTimeBtn = document.getElementById("arrival-time-btn");
-  
-  if (currentTimeBtn && arrivalTimeBtn) {
-    currentTimeBtn.classList.toggle("active", useCurrentTime);
-    arrivalTimeBtn.classList.toggle("active", !useCurrentTime);
-  }
-  
-  // 표시 업데이트
-  updateOpenStatusDisplay();
-  
-  // 상태 알림
-  const statusMessage = useCurrentTime ? 
-    "현재 시간 기준으로 운영 상태를 표시합니다." : 
-    "환승 도착 시간 기준으로 운영 상태를 표시합니다.";
-  
-  showTemporaryNotification(statusMessage);
-}
+// 시간 모드 설정 함수 -> 06.07 삭제
 
 // 운영 상태 표시 업데이트
 function updateOpenStatusDisplay() {
@@ -1365,6 +1356,100 @@ function showTemporaryNotification(message) {
       }
     }, 500);
   }, 2000);
+}
+
+/* ---------- UI 모드 전환 함수들 (개선된 버전) ---------- */
+
+// 시간 모드 설정 함수 (개선된 버전)
+function setTimeMode(useCurrentTime) {
+  isUsingCurrentTime = useCurrentTime;
+  
+  // 버튼 상태 업데이트
+  const currentTimeBtn = document.getElementById("current-time-btn");
+  const arrivalTimeBtn = document.getElementById("arrival-time-btn");
+  
+  if (currentTimeBtn && arrivalTimeBtn) {
+    currentTimeBtn.classList.toggle("active", useCurrentTime);
+    arrivalTimeBtn.classList.toggle("active", !useCurrentTime);
+  }
+  
+  // UI 요소 표시/숨김
+  const arrivalTimeForm = document.getElementById("arrival-time-form");
+  const layoverTitle = document.getElementById("layover-title");
+  const layoverDescription = document.getElementById("layover-description");
+  
+  if (useCurrentTime) {
+    // 현재 시간 모드
+    if (arrivalTimeForm) arrivalTimeForm.style.display = "none";
+    if (layoverTitle) layoverTitle.textContent = "여행 가능 시간 (분 단위)";
+    if (layoverDescription) {
+      layoverDescription.textContent = "지금부터 얼마나 오래 여행하실 예정인가요? (최소 30분, 최대 24시간)";
+    }
+    showTemporaryNotification("현재 시간 기준으로 설정되었습니다.");
+  } else {
+    // 환승 도착 시간 모드
+    if (arrivalTimeForm) arrivalTimeForm.style.display = "block";
+    if (layoverTitle) layoverTitle.textContent = "환승 시간 (분 단위)";
+    if (layoverDescription) {
+      layoverDescription.textContent = "환승 대기 시간 동안 여행하실 시간입니다. (최소 30분, 최대 24시간)";
+    }
+    showTemporaryNotification("환승 도착 시간 기준으로 설정되었습니다.");
+  }
+  
+  // 표시 업데이트
+  updateOpenStatusDisplay();
+  
+  console.log(`시간 모드 변경: ${useCurrentTime ? '현재 시간' : '환승 도착 시간'}`);
+}
+
+// 페이지 로드 시 초기 모드 설정
+function initializeTimeMode() {
+  // 기본값: 현재 시간 모드
+  setTimeMode(true);
+  
+  // 현재 시간을 환승 시간 입력창에 기본값으로 설정
+  const layoverInput = document.getElementById("layover-time");
+  if (layoverInput && !layoverInput.value) {
+    layoverInput.value = "180"; // 기본 3시간
+  }
+}
+
+// 현재 시간 모드에서 일정 생성 시 유효성 검사 개선
+function validateCurrentTimeMode() {
+  if (isUsingCurrentTime) {
+    const layoverTime = parseInt(document.getElementById("layover-time").value);
+    
+    if (!layoverTime || isNaN(layoverTime)) {
+      alert("여행 가능 시간을 입력해주세요.");
+      return false;
+    }
+    
+    if (layoverTime < 30) {
+      alert("최소 30분 이상의 여행 시간이 필요합니다.");
+      return false;
+    }
+    
+    if (layoverTime > 1440) {
+      alert("최대 24시간(1440분)까지만 설정 가능합니다.");
+      return false;
+    }
+    
+    return true;
+  }
+  
+  return true; // 환승 모드는 기존 검증 로직 사용
+}
+
+// 현재 시간 모드용 가상 도착 시간 생성
+function getCurrentTimeModeArrivalTime() {
+  if (isUsingCurrentTime) {
+    // 현재 시간을 환승 도착 시간으로 사용
+    return new Date();
+  }
+  
+  // 환승 모드는 기존 입력값 사용
+  const arrivalInput = document.getElementById("arrival-time");
+  return new Date(arrivalInput.value);
 }
 
 // 06.03 여행 네비게이션 관련 함수
@@ -1418,6 +1503,171 @@ function updateStatusIndicator(status, message, nextDestination, timeRemaining) 
   // 표시
   statusIndicator.style.display = "block";
 }
+
+// 상세 정보가 포함된 상태 표시기 업데이트
+function updateStatusIndicatorWithDetails(status, message, nextDestination, timeRemaining, detailedInfo = '') {
+  const statusIndicator = document.getElementById("status-indicator");
+  const statusIcon = statusIndicator.querySelector(".status-icon");
+  const statusText = statusIndicator.querySelector(".status-text");
+  const nextDest = statusIndicator.querySelector(".next-destination");
+  const timeRem = statusIndicator.querySelector(".time-remaining");
+  
+  // 상세 정보 표시 영역 (새로 추가될 부분)
+  let detailsArea = statusIndicator.querySelector(".detailed-info");
+  
+  // 상태별 아이콘 및 색상
+  switch(status) {
+    case 'normal':
+      statusIcon.textContent = "🟢";
+      statusText.className = "status-text status-normal";
+      break;
+    case 'warning':
+      statusIcon.textContent = "🟡";
+      statusText.className = "status-text status-warning";
+      break;
+    case 'critical':
+      statusIcon.textContent = "🔴";
+      statusText.className = "status-text status-critical";
+      break;
+    default:
+      statusIcon.textContent = "⚪";
+      statusText.className = "status-text";
+  }
+  
+  statusText.textContent = message;
+  nextDest.textContent = `다음: ${nextDestination}`;
+  timeRem.textContent = `남은 시간: ${timeRemaining}`;
+  
+  // 상세 정보 표시 (있는 경우)
+  if (detailedInfo && detailsArea) {
+    detailsArea.textContent = detailedInfo;
+    detailsArea.style.display = 'block';
+  } else if (detailsArea) {
+    detailsArea.style.display = 'none';
+  }
+  
+  // 표시
+  statusIndicator.style.display = "block";
+}
+
+// 06.11 여행 상태 인디케이터 고도화
+/* ---------- 다음 목적지 상세 정보 함수들 ---------- */
+
+// 다음 목적지까지의 상세 정보 가져오기
+async function getNextDestinationDetails(currentPos, nextDestination) {
+  if (!currentPos || !nextDestination) {
+    return null;
+  }
+
+  const userLocation = new google.maps.LatLng(currentPos.lat, currentPos.lng);
+  const destLocation = nextDestination.location;
+
+  try {
+    // 도보 경로 먼저 확인
+    const walkingRoute = await getDirectionsDetails(userLocation, destLocation, 'WALKING');
+    
+    // 대중교통 경로도 확인 (비교용)
+    const transitRoute = await getDirectionsDetails(userLocation, destLocation, 'TRANSIT');
+
+    return {
+      walking: walkingRoute,
+      transit: transitRoute,
+      destination: nextDestination
+    };
+  } catch (error) {
+    console.error("다음 목적지 정보 가져오기 실패:", error);
+    return null;
+  }
+}
+
+// Google Directions API 호출 (Promise 버전)
+function getDirectionsDetails(origin, destination, travelMode) {
+  return new Promise((resolve, reject) => {
+    const directionsService = new google.maps.DirectionsService();
+    
+    const request = {
+      origin: origin,
+      destination: destination,
+      travelMode: travelMode,
+      unitSystem: google.maps.UnitSystem.METRIC
+    };
+
+    // 대중교통인 경우 추가 옵션
+    if (travelMode === 'TRANSIT') {
+      request.transitOptions = {
+        departureTime: new Date()
+      };
+    }
+
+    directionsService.route(request, (result, status) => {
+      if (status === 'OK') {
+        resolve(result);
+      } else {
+        reject(status);
+      }
+    });
+  });
+}
+
+// 도보 정보 파싱
+function parseWalkingInfo(directionsResult) {
+  if (!directionsResult || !directionsResult.routes[0]) {
+    return null;
+  }
+
+  const route = directionsResult.routes[0];
+  const leg = route.legs[0];
+
+  return {
+    distance: leg.distance.text,
+    duration: leg.duration.text,
+    steps: leg.steps.map(step => ({
+      instruction: step.instructions.replace(/<[^>]*>/g, ''), // HTML 태그 제거
+      distance: step.distance.text,
+      duration: step.duration.text
+    }))
+  };
+}
+
+// 대중교통 정보 파싱  
+function parseTransitInfo(directionsResult) {
+  if (!directionsResult || !directionsResult.routes[0]) {
+    return null;
+  }
+
+  const route = directionsResult.routes[0];
+  const leg = route.legs[0];
+  const transitSteps = [];
+
+  leg.steps.forEach(step => {
+    if (step.travel_mode === 'TRANSIT' && step.transit) {
+      const transit = step.transit;
+      transitSteps.push({
+        type: transit.line.vehicle.type, // BUS, SUBWAY, TRAIN 등
+        lineName: transit.line.name,
+        lineShortName: transit.line.short_name,
+        departureStop: transit.departure_stop.name,
+        arrivalStop: transit.arrival_stop.name,
+        duration: step.duration.text
+      });
+    } else if (step.travel_mode === 'WALKING') {
+      transitSteps.push({
+        type: 'WALKING',
+        duration: step.duration.text,
+        distance: step.distance.text,
+        instruction: step.instructions.replace(/<[^>]*>/g, '')
+      });
+    }
+  });
+
+  return {
+    totalDuration: leg.duration.text,
+    totalDistance: leg.distance.text,
+    steps: transitSteps
+  };
+}
+
+
 
 // 여행 시작
 function startJourney() {
@@ -1857,24 +2107,69 @@ function showDestinationArrivalNotification(destination) {
 
 /* ---------- 여행 진행 상황 업데이트 ---------- */
 
-// 여행 진행 상황 업데이트 (네비게이션 스타일)
-function updateJourneyProgress(position) {
+// 여행 진행 상황 업데이트 (도보 + 대중교통 정보)
+async function updateJourneyProgress(position) {
   if (!isJourneyActive || !journeyItinerary.length) {
     return;
   }
 
-  // 현재 목적지까지의 거리 계산
-  if (currentDestinationIndex < journeyItinerary.length) {
-    const currentDest = journeyItinerary[currentDestinationIndex];
-    const userLocation = new google.maps.LatLng(position.lat, position.lng);
-    const distance = calculateDistance(userLocation, currentDest.location);
+  if (currentDestinationIndex >= journeyItinerary.length) {
+    return; // 모든 목적지 방문 완료
+  }
+
+  const currentDest = journeyItinerary[currentDestinationIndex];
+  const userLocation = new google.maps.LatLng(position.lat, position.lng);
+  const distance = calculateDistance(userLocation, currentDest.location);
+  
+  // 기본 정보
+  const nextDestName = currentDest.name;
+  const distanceText = distance < 1 ? 
+    `${Math.round(distance * 1000)}m` : 
+    `${distance.toFixed(1)}km`;
+
+  // 상세 정보 가져오기 시도
+  try {
+    const detailInfo = await getNextDestinationDetails(position, currentDest);
     
-    // 상태 정보 업데이트 (구글맵 네비게이션처럼)
-    const nextDestName = currentDest.name;
-    const distanceText = distance < 1 ? 
-      `${Math.round(distance * 1000)}m` : 
-      `${distance.toFixed(1)}km`;
+    let statusMessage = '여행 진행 중';
+    let detailedInfo = '';
+
+    if (detailInfo) {
+      // 도보와 대중교통 정보 모두 확인
+      const walkingInfo = detailInfo.walking ? parseWalkingInfo(detailInfo.walking) : null;
+      const transitInfo = detailInfo.transit ? parseTransitInfo(detailInfo.transit) : null;
+      
+      // 도보가 더 빠르거나 가까운 경우 도보 우선
+      if (walkingInfo && (!transitInfo || shouldPreferWalking(walkingInfo, transitInfo))) {
+        detailedInfo = `🚶 도보 ${walkingInfo.distance} (${walkingInfo.duration})`;
+        statusMessage = '도보로 이동';
+      } 
+      // 대중교통이 더 효율적인 경우
+      else if (transitInfo) {
+        const transitSteps = formatTransitSteps(transitInfo.steps);
+        detailedInfo = `🚌 ${transitSteps} (${transitInfo.totalDuration})`;
+        statusMessage = '대중교통 이용';
+      }
+      // 둘 다 없으면 도보 fallback
+      else if (walkingInfo) {
+        detailedInfo = `🚶 도보 ${walkingInfo.distance} (${walkingInfo.duration})`;
+        statusMessage = '도보로 이동';
+      }
+    }
+
+    // 상태 표시기 업데이트 (상세 정보 포함)
+    updateStatusIndicatorWithDetails(
+      'normal',
+      statusMessage,
+      `${nextDestName} (${distanceText})`,
+      calculateRemainingTime(),
+      detailedInfo
+    );
+
+  } catch (error) {
+    console.error("상세 정보 업데이트 실패:", error);
     
+    // 기본 정보로 fallback
     updateStatusIndicator(
       'normal',
       '여행 진행 중',
@@ -1882,6 +2177,82 @@ function updateJourneyProgress(position) {
       calculateRemainingTime()
     );
   }
+}
+
+// 도보 vs 대중교통 우선순위 결정
+function shouldPreferWalking(walkingInfo, transitInfo) {
+  if (!walkingInfo || !transitInfo) return true;
+  
+  // 도보 시간 추출 (예: "6분" → 6)
+  const walkingMinutes = extractMinutes(walkingInfo.duration);
+  const transitMinutes = extractMinutes(transitInfo.totalDuration);
+  
+  // 도보가 15분 이하이고, 대중교통과 차이가 10분 이하면 도보 우선
+  return walkingMinutes <= 15 && (transitMinutes - walkingMinutes) <= 10;
+}
+
+// 시간에서 분 추출 (예: "6분", "1시간 20분" → 숫자)
+function extractMinutes(timeString) {
+  if (!timeString) return 999;
+  
+  const hourMatch = timeString.match(/(\d+)시간/);
+  const minuteMatch = timeString.match(/(\d+)분/);
+  
+  const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
+  const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
+  
+  return hours * 60 + minutes;
+}
+
+// 대중교통 단계를 읽기 쉬운 형태로 포맷
+function formatTransitSteps(steps) {
+  if (!steps || !steps.length) return "대중교통";
+  
+  const transitParts = [];
+  
+  steps.forEach(step => {
+    if (step.type === 'WALKING') {
+      // 도보 구간은 간단히 표시
+      if (step.distance && extractMinutes(step.duration) > 3) {
+        transitParts.push(`도보 ${step.duration}`);
+      }
+    } else if (step.type !== 'WALKING') {
+      // 대중교통 구간
+      const vehicleType = getVehicleTypeKorean(step.type);
+      const lineName = step.lineShortName || step.lineName || '';
+      
+      if (lineName) {
+        transitParts.push(`${vehicleType} ${lineName}`);
+      } else {
+        transitParts.push(vehicleType);
+      }
+    }
+  });
+  
+  // 너무 길면 줄임
+  if (transitParts.length > 3) {
+    return `${transitParts.slice(0, 2).join(' → ')} 외 ${transitParts.length - 2}개`;
+  }
+  
+  return transitParts.join(' → ') || "대중교통";
+}
+
+// 교통수단 타입을 한국어로 변환
+function getVehicleTypeKorean(type) {
+  const typeMap = {
+    'SUBWAY': '지하철',
+    'BUS': '버스', 
+    'TRAIN': '기차',
+    'TRAM': '트램',
+    'RAIL': '전철',
+    'METRO_RAIL': '지하철',
+    'HEAVY_RAIL': '전철',
+    'COMMUTER_TRAIN': '통근열차',
+    'HIGH_SPEED_TRAIN': '고속열차',
+    'LONG_DISTANCE_TRAIN': '장거리열차'
+  };
+  
+  return typeMap[type] || '대중교통';
 }
 
 // 남은 시간 계산 (간단한 버전)
@@ -2127,7 +2498,7 @@ function initMap(){
     }
   }
   
-  // 시간 모드 토글 기능 추가
+  // 시간 모드 토글 기능 (수정된 버전)
   const currentTimeBtn = document.getElementById("current-time-btn");
   const arrivalTimeBtn = document.getElementById("arrival-time-btn");
   
@@ -2135,23 +2506,42 @@ function initMap(){
     currentTimeBtn.addEventListener("click", function() {
       setTimeMode(true);
     });
-    
     arrivalTimeBtn.addEventListener("click", function() {
-      // 환승 도착 시간이 설정되지 않은 경우 경고
-      if (!arrivalInput.value) {
-        alert("환승지 도착 시간을 먼저 입력해주세요.");
-        return;
-      }
       setTimeMode(false);
     });
   }
   
-  // 환승 시간 입력 시 알림
+  // 초기 시간 모드 설정 (새로 추가)
+  initializeTimeMode();
+  
+  // 환승 시간 입력 시 알림 (개선된 버전)
   if (arrivalInput) {
     arrivalInput.addEventListener("change", function() {
       if (this.value && !isUsingCurrentTime) {
-        // 이미 환승 시간 모드일 경우 일정 다시 표시
         updateOpenStatusDisplay();
+        showTemporaryNotification("환승 도착 시간이 설정되었습니다.");
+      }
+    });
+  }
+
+  // 여행 시간 입력 시 실시간 유효성 검사 (새로 추가)
+  const layoverInput = document.getElementById("layover-time");
+  if (layoverInput) {
+    layoverInput.addEventListener("input", function() {
+      const value = parseInt(this.value);
+      const warningArea = document.getElementById("layover-warning");
+      
+      // 기존 경고 제거
+      if (warningArea) warningArea.remove();
+      
+      if (value && (value < 30 || value > 1440)) {
+        const warning = document.createElement("small");
+        warning.id = "layover-warning";
+        warning.style.color = "#f44336";
+        warning.textContent = value < 30 ? 
+          "⚠️ 최소 30분 이상 설정해주세요." : 
+          "⚠️ 최대 24시간(1440분)까지 설정 가능합니다.";
+        this.parentNode.appendChild(warning);
       }
     });
   }
@@ -2162,41 +2552,67 @@ function initMap(){
     gpsButton.addEventListener("click", getCurrentLocation);
   }
   // 여행 네비게이션 버튼 이벤트 리스너
-const startJourneyBtn = document.getElementById("start-journey-button");
-const pauseJourneyBtn = document.getElementById("pause-journey-btn");
-const resumeJourneyBtn = document.getElementById("resume-journey-btn"); // 새로 추가
-const stopJourneyBtn = document.getElementById("stop-journey-btn");
-const statusToggle = document.querySelector(".status-toggle");
+  const startJourneyBtn = document.getElementById("start-journey-button");
+  const pauseJourneyBtn = document.getElementById("pause-journey-btn");
+  const resumeJourneyBtn = document.getElementById("resume-journey-btn"); // 새로 추가
+  const stopJourneyBtn = document.getElementById("stop-journey-btn");
+  const statusToggle = document.querySelector(".status-toggle");
 
-if (startJourneyBtn) {
-  startJourneyBtn.addEventListener("click", startJourney);
-}
+  if (startJourneyBtn) {
+    startJourneyBtn.addEventListener("click", startJourney);
+  }
 
-if (pauseJourneyBtn) {
-  pauseJourneyBtn.addEventListener("click", pauseJourney);
-}
+  if (pauseJourneyBtn) {
+    pauseJourneyBtn.addEventListener("click", pauseJourney);
+  }
 
-if (resumeJourneyBtn) { // 새로 추가
-  resumeJourneyBtn.addEventListener("click", resumeJourney);
-}
+  if (resumeJourneyBtn) { // 새로 추가
+    resumeJourneyBtn.addEventListener("click", resumeJourney);
+  }
 
-if (stopJourneyBtn) {
-  stopJourneyBtn.addEventListener("click", stopJourney);
-}
+  if (stopJourneyBtn) {
+    stopJourneyBtn.addEventListener("click", stopJourney);
+  }
 
-if (statusToggle) {
-  statusToggle.addEventListener("click", toggleStatusIndicatorMode);
-}
+  if (statusToggle) {
+    statusToggle.addEventListener("click", toggleStatusIndicatorMode);
+  }
 
-// 06.07 복귀 버튼 이벤트 리스너 (새로 추가)
-const recenterBtn = document.getElementById("recenter-map-btn");
-if (recenterBtn) {
-  recenterBtn.addEventListener("click", recenterMapToUser);
-}
-  
+  // 06.07 복귀 버튼 이벤트 리스너 (새로 추가)
+  const recenterBtn = document.getElementById("recenter-map-btn");
+  if (recenterBtn) {
+    recenterBtn.addEventListener("click", recenterMapToUser);
+  }
+
+  // 목적지 검색창 X 버튼 기능 (새로 추가)
+  setupSearchClearButton();
+
   // 로딩 오버레이 초기 숨김
   if (loadingOverlay) loadingOverlay.style.display = "none";
 }
+
+// 06.07 검색창 지우기 버튼 추가 (모바일 환경)
+/* ---------- 검색창 X 버튼 기능 (간단 버전) ---------- */
+
+function setupSearchClearButton() {
+  const searchInput = document.getElementById("destination-search");
+  const clearBtn = document.getElementById("clear-search-btn");
+  
+  if (!searchInput || !clearBtn) return;
+  
+  // 입력할 때 X 버튼 보이기
+  searchInput.addEventListener("input", function() {
+    clearBtn.style.display = this.value.length > 0 ? "flex" : "none";
+  });
+  
+  // X 버튼 클릭 시 검색창 비우기
+  clearBtn.addEventListener("click", function() {
+    searchInput.value = "";
+    clearBtn.style.display = "none";
+    document.getElementById("destination-search-results").innerHTML = "";
+  });
+}
+
 
 // 06.03 gps 관련 추가
 /* ---------- GPS 관련 함수들 ---------- */
