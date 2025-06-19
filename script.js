@@ -893,7 +893,7 @@ function filterPlacesByLayover(arrivalTime, layoverTime) {
       console.log("오늘 요일:", today);
       console.log("운영 시간 텍스트:", dayText);
        
-      // 24시간 운영 키워드 체크
+      // 24시간 운영 키워드 체크 (06.19 확인 -> 24시간 운영 예외처리 코드 수정 필요)
       if (dayText && (
           dayText.toLowerCase().includes("24 hour") || 
           dayText.toLowerCase().includes("24시간") || 
@@ -913,7 +913,7 @@ function filterPlacesByLayover(arrivalTime, layoverTime) {
     const stayEndTime = new Date(adjustedArrival.getTime() + p.duration * 60000);
     const stayEndOk = stayEndTime <= endTime;
     console.log("체류 종료 시간:", stayEndTime);
-    console.log("환승 종료 시간 내 방문 가능:", stayEndOk);
+    co요sole.log("환승 종료 시간 내 방문 가능:", stayEndOk);
      
     return visitStartOk && stayEndOk;
   });
@@ -1890,7 +1890,9 @@ function onLocationUpdate(position) {
     
     // 위치 기반 로직 실행
     checkDestinationArrival(newPosition);
-    updateJourneyProgress(newPosition);
+    //updateJourneyProgress(newPosition);
+    // 이렇게 변경:
+    updateJourneyProgressEnhanced(newPosition);
   }
 }
 
@@ -2178,6 +2180,205 @@ async function updateJourneyProgress(position) {
     );
   }
 }
+
+// 06.13 
+/* ---------- 2단계: 대중교통 정보 고도화 ---------- */
+
+// 개선된 여행 진행 상황 업데이트 (대중교통 포함)
+async function updateJourneyProgressEnhanced(position) {
+  if (!isJourneyActive || !journeyItinerary.length) {
+    return;
+  }
+
+  if (currentDestinationIndex >= journeyItinerary.length) {
+    return; // 모든 목적지 방문 완료
+  }
+
+  const currentDest = journeyItinerary[currentDestinationIndex];
+  const userLocation = new google.maps.LatLng(position.lat, position.lng);
+  const distance = calculateDistance(userLocation, currentDest.location);
+  
+  // 기본 정보
+  const nextDestName = currentDest.name;
+  const distanceText = distance < 1 ? 
+    `${Math.round(distance * 1000)}m` : 
+    `${distance.toFixed(1)}km`;
+
+  // 상세 정보 가져오기 시도
+  try {
+    const detailInfo = await getNextDestinationDetails(position, currentDest);
+    
+    let statusMessage = '여행 진행 중';
+    let detailedInfo = '';
+
+    if (detailInfo) {
+      // 도보와 대중교통 정보 모두 확인
+      const walkingInfo = detailInfo.walking ? parseWalkingInfo(detailInfo.walking) : null;
+      const transitInfo = detailInfo.transit ? parseTransitInfo(detailInfo.transit) : null;
+      
+      console.log("도보 정보:", walkingInfo);
+      console.log("대중교통 정보:", transitInfo);
+      
+      // 대중교통 우선순위 판단
+      if (shouldUseTransit(walkingInfo, transitInfo, distance)) {
+        // 대중교통 사용
+        const transitSteps = formatTransitSteps(transitInfo.steps);
+        detailedInfo = `🚌 ${transitSteps} (${transitInfo.totalDuration})`;
+        statusMessage = '대중교통 이용';
+      } 
+      else if (walkingInfo) {
+        // 도보 사용
+        detailedInfo = `🚶 도보 ${walkingInfo.distance} (${walkingInfo.duration})`;
+        statusMessage = '도보로 이동';
+      }
+      else {
+        // 정보 없음
+        detailedInfo = '경로 정보 없음';
+        statusMessage = '경로 계산 중';
+      }
+    }
+
+    // 상태 표시기 업데이트 (상세 정보 포함)
+    updateStatusIndicatorWithDetails(
+      'normal',
+      statusMessage,
+      `${nextDestName} (${distanceText})`,
+      calculateRemainingTime(),
+      detailedInfo
+    );
+
+  } catch (error) {
+    console.error("상세 정보 업데이트 실패:", error);
+    
+    // 기본 정보로 fallback
+    updateStatusIndicator(
+      'normal',
+      '여행 진행 중',
+      `${nextDestName} (${distanceText})`,
+      calculateRemainingTime()
+    );
+  }
+}
+
+// 대중교통 vs 도보 판단 (현실적 기준)
+function shouldUseTransit(walkingInfo, transitInfo, distanceKm) {
+  // 기본 검증
+  if (!walkingInfo || !transitInfo) {
+    return false; // 대중교통 정보 없으면 도보
+  }
+  
+  // 시간 추출
+  const walkingMinutes = extractMinutes(walkingInfo.duration);
+  const transitMinutes = extractMinutes(transitInfo.totalDuration);
+  
+  // 현실적 판단 기준
+  
+  // 1. 거리가 1km 이상이고 도보 12분 이상이면 대중교통 고려
+  if (distanceKm >= 1 && walkingMinutes >= 12) {
+    // 2. 대중교통이 도보보다 15분 이상 오래 걸리면 도보 선택
+    if (transitMinutes - walkingMinutes > 15) {
+      console.log(`도보 선택: 대중교통이 ${transitMinutes - walkingMinutes}분 더 오래 걸림`);
+      return false;
+    }
+    console.log(`대중교통 선택: 거리 ${distanceKm.toFixed(1)}km, 도보 ${walkingMinutes}분`);
+    return true;
+  }
+  
+  // 3. 짧은 거리는 도보
+  console.log(`도보 선택: 거리 ${distanceKm.toFixed(1)}km, 도보 ${walkingMinutes}분`);
+  return false;
+}
+
+// 시간에서 분 추출 (예: "6분", "1시간 20분" → 숫자)
+function extractMinutes(timeString) {
+  if (!timeString) return 999;
+  
+  // "1 hour 20 mins" 또는 "20 mins" 형태도 처리
+  const hourMatch = timeString.match(/(\d+)\s*(시간|hour)/i);
+  const minuteMatch = timeString.match(/(\d+)\s*(분|min)/i);
+  
+  const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
+  const minutes = minuteMatch ? parseInt(minuteMatch[1]) : 0;
+  
+  return hours * 60 + minutes;
+}
+
+// 대중교통 단계를 상세하게 포맷
+function formatTransitSteps(steps) {
+  if (!steps || !steps.length) {
+    return "대중교통 정보 없음";
+  }
+  
+  const transitParts = [];
+  let hasTransit = false;
+  
+  steps.forEach(step => {
+    if (step.type === 'WALKING') {
+      // 도보 구간 (5분 이상만 표시)
+      const walkingMinutes = extractMinutes(step.duration);
+      if (walkingMinutes >= 5) {
+        transitParts.push(`도보 ${step.duration}`);
+      }
+    } else if (step.type !== 'WALKING') {
+      // 대중교통 구간
+      hasTransit = true;
+      const vehicleType = getVehicleTypeKorean(step.type);
+      let lineName = '';
+      
+      // 노선명 처리 (상세하게)
+      if (step.lineShortName) {
+        lineName = step.lineShortName;
+      } else if (step.lineName) {
+        // 긴 이름에서 핵심 부분 추출
+        lineName = step.lineName.replace(/Line|선|호선/gi, '').trim();
+        if (lineName.length > 10) {
+          lineName = lineName.substring(0, 10) + '...';
+        }
+      }
+      
+      if (lineName) {
+        transitParts.push(`${vehicleType} ${lineName}`);
+      } else {
+        transitParts.push(vehicleType);
+      }
+    }
+  });
+  
+  // 대중교통이 없으면 fallback
+  if (!hasTransit) {
+    return "대중교통 없음";
+  }
+  
+  // 너무 많은 환승은 간략화
+  if (transitParts.length > 3) {
+    return `${transitParts.slice(0, 2).join(' → ')} 외 ${transitParts.length - 2}개`;
+  }
+  
+  return transitParts.join(' → ') || "대중교통";
+}
+
+// 교통수단 타입을 한국어로 변환 (상세하게)
+function getVehicleTypeKorean(type) {
+  const typeMap = {
+    'SUBWAY': '지하철',
+    'BUS': '버스', 
+    'TRAIN': '기차',
+    'TRAM': '트램',
+    'RAIL': '전철',
+    'METRO_RAIL': '지하철',
+    'HEAVY_RAIL': '전철',
+    'COMMUTER_TRAIN': '통근열차',
+    'HIGH_SPEED_TRAIN': '고속철',
+    'LONG_DISTANCE_TRAIN': '장거리열차',
+    'FERRY': '페리',
+    'CABLE_CAR': '케이블카',
+    'GONDOLA_LIFT': '곤돌라',
+    'FUNICULAR': '푸니쿨라'
+  };
+  
+  return typeMap[type] || '대중교통';
+}
+
 
 // 도보 vs 대중교통 우선순위 결정
 function shouldPreferWalking(walkingInfo, transitInfo) {
